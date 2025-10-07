@@ -1,4 +1,4 @@
-# pages/01_Visão_Geral.py (VERSÃO CORRIGIDA - Agrupando Receitas por Projeto)
+# pages/01_Visão_Geral.py (VERSÃO CORRIGIDA - Nomes das abas ajustados)
 
 import streamlit as st
 import pandas as pd
@@ -35,9 +35,11 @@ def carregar_dados(spreadsheet_id, _gc):
     try:
         sh = _gc.open_by_key(spreadsheet_id)
         projetos = pd.DataFrame(sh.worksheet("Projetos").get_all_records())
-        # Corrigindo os nomes das abas para corresponder ao que você informou
-        receitas = pd.DataFrame(sh.worksheet("Receitas").get_all_records())
-        despesas = pd.DataFrame(sh.worksheet("Despesas").get_all_records())
+        
+        # ** MUDANÇA IMPORTANTE AQUI **
+        # Verifique se os nomes "Receitas_Reais" e "Despesas_Reais" correspondem à sua planilha
+        receitas = pd.DataFrame(sh.worksheet("Receitas_Reais").get_all_records())
+        despesas = pd.DataFrame(sh.worksheet("Despesas_Reais").get_all_records())
         
         for df, col in zip([receitas, despesas], ["Data Recebimento", "Data Pagamento"]):
             if col in df.columns and not df.empty:
@@ -49,8 +51,11 @@ def carregar_dados(spreadsheet_id, _gc):
                     df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         
         return projetos, receitas, despesas
+    except gspread.exceptions.WorksheetNotFound as e:
+        st.error(f"Erro ao ler dados: A aba '{e.args[0]}' não foi encontrada na planilha. Verifique o nome da aba.")
+        return tuple(pd.DataFrame() for _ in range(3))
     except Exception as e:
-        st.error(f"Erro ao ler dados: {e}")
+        st.error(f"Ocorreu um erro inesperado ao ler os dados: {e}")
         return tuple(pd.DataFrame() for _ in range(3))
 
 def calcular_metricas_resumo(receitas_f, despesas_f, receitas_total, despesas_total, data_inicio_filtro):
@@ -65,11 +70,11 @@ def calcular_metricas_resumo(receitas_f, despesas_f, receitas_total, despesas_to
     return saldo_anterior, receitas_periodo, despesas_periodo, resultado_periodo, saldo_atual
 
 # --- INICIALIZAÇÃO E CARGA DE DADOS ---
-spreadsheet_id = "1Ut25HiLC17oq7X6ThTKqMPHnPUoBjXsIRaVVFJDa7r4"
+spreadsheet_id = "1Ut2GeralHiLC17oq7X6ThTKqMPHnPUoBjXsIRaVVFJDa7r4"
 gc = conectar_sheets()
 projetos, receitas, despesas = carregar_dados(spreadsheet_id, gc)
-if projetos.empty:
-    st.error("Falha ao carregar dados. A página não pode ser exibida.")
+if projetos.empty or receitas.empty or despesas.empty:
+    st.warning("Uma ou mais abas de dados essenciais ('Projetos', 'Receitas_Reais', 'Despesas_Reais') não foram carregadas. Verifique os nomes e permissões.")
     st.stop()
 
 # --- SIDEBAR ---
@@ -133,7 +138,6 @@ st.subheader("Composição do Período")
 col1, col2 = st.columns(2)
 with col1:
     if not receitas_f.empty:
-        # ** MUDANÇA AQUI: Agrupando por 'Projeto' em vez de 'Categoria' **
         receitas_agrupadas = receitas_f.groupby("Projeto")['Valor Recebido'].sum().reset_index()
         fig_rec = px.pie(receitas_agrupadas, values='Valor Recebido', names='Projeto', title='Receitas por Projeto', hole=0.4)
         st.plotly_chart(fig_rec, use_container_width=True)
