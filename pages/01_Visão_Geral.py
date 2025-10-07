@@ -11,7 +11,6 @@ import uuid
 
 # --- Configuração da Página e Estilos ---
 st.set_page_config(layout="wide", page_title="Visão Geral | Dashboard Opyta")
-# MELHORIA DE ESTILO: Adicionamos um estilo para o container de blocos
 st.markdown("""
 <style>
 .block-container {
@@ -29,7 +28,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- Funções Core (sem alterações) ---
+# --- Funções Core ---
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
 @st.cache_resource
 def conectar_sheets():
@@ -94,39 +93,29 @@ if projeto_selecionado != "Todos":
 if data_inicio and data_fim and data_inicio <= data_fim:
     receitas_f = receitas_f[receitas_f["Data Recebimento"].between(data_inicio, data_fim)]
     despesas_f = despesas_f[despesas_f["Data Pagamento"].between(data_inicio, data_fim)]
-    # MELHORIA KPI: Calcular dados do período anterior para comparação
-    duracao_periodo = (data_fim - data_inicio).days
-    data_inicio_anterior = data_inicio - datetime.timedelta(days=duracao_periodo + 1)
-    data_fim_anterior = data_fim - datetime.timedelta(days=duracao_periodo + 1)
-    receitas_anterior = receitas_f[receitas_f["Data Recebimento"].between(data_inicio_anterior, data_fim_anterior)]
-    despesas_anterior = despesas_f[despesas_f["Data Pagamento"].between(data_inicio_anterior, data_fim_anterior)]
 
 # --- LAYOUT PROFISSIONAL DA "VISÃO GERAL" ---
 st.title("Dashboard: Visão Geral")
 st.markdown("Análise de performance financeira dos projetos.")
 
-# MELHORIA KPI: Container para os indicadores principais com cálculo de delta (tendência)
+# KPI Container com 5 colunas, sem delta
 with st.container():
     st.markdown('<div class="block-container">', unsafe_allow_html=True)
     
-    # Calcular totais do período atual e anterior
-    total_receitas, total_despesas, _, _, fluxo_caixa = calcular_totais(receitas_f, despesas_f, custos)
-    total_receitas_ant, total_despesas_ant, _, _, fluxo_caixa_ant = calcular_totais(receitas_anterior, despesas_anterior, custos)
+    # ** MUDANÇA AQUI: Voltamos para o cálculo simples dos 5 KPIs **
+    total_receitas, total_despesas, total_custos, lucro_total, fluxo_caixa = calcular_totais(receitas_f, despesas_f, custos)
     
-    # Funções para calcular o delta (a variação percentual)
-    def get_delta(atual, anterior):
-        if anterior == 0: return None # Evita divisão por zero
-        return f"{((atual - anterior) / anterior) * 100:.1f}%"
-
-    kpi_cols = st.columns(3)
-    kpi_cols[0].metric("Receita Total", format_currency(total_receitas, "BRL", locale="pt_BR"), delta=get_delta(total_receitas, total_receitas_ant))
-    kpi_cols[1].metric("Despesa Total", format_currency(total_despesas, "BRL", locale="pt_BR"), delta=get_delta(total_despesas, total_despesas_ant), delta_color="inverse")
-    kpi_cols[2].metric("Fluxo de Caixa", format_currency(fluxo_caixa, "BRL", locale="pt_BR"), delta=get_delta(fluxo_caixa, fluxo_caixa_ant))
+    kpi_cols = st.columns(5)
+    kpi_cols[0].metric("Receita Total", format_currency(total_receitas, "BRL", locale="pt_BR"))
+    kpi_cols[1].metric("Despesa Total", format_currency(total_despesas, "BRL", locale="pt_BR"))
+    kpi_cols[2].metric("Custos Fixos/Var.", format_currency(total_custos, "BRL", locale="pt_BR"))
+    kpi_cols[3].metric("Lucro Total", format_currency(lucro_total, "BRL", locale="pt_BR"))
+    kpi_cols[4].metric("Fluxo de Caixa", format_currency(fluxo_caixa, "BRL", locale="pt_BR"))
     
     st.markdown('</div>', unsafe_allow_html=True)
 
 
-# MELHORIA DE LAYOUT: Container para o gráfico principal
+# Container para o gráfico principal
 with st.container():
     st.markdown('<div class="block-container">', unsafe_allow_html=True)
     st.header("📈 Evolução Financeira")
@@ -141,7 +130,7 @@ with st.container():
     st.markdown('</div>', unsafe_allow_html=True)
 
 
-# MELHORIA DE LAYOUT: Container para a seção de análises e metas
+# Container para a seção de análises e metas
 with st.container():
     st.markdown('<div class="block-container">', unsafe_allow_html=True)
     col_vis1, col_vis2 = st.columns(2)
@@ -164,7 +153,7 @@ with st.container():
             meta = projeto['Meta de Receita']
             receitas_projeto = receitas_f[receitas_f["Projeto"] == projeto["Código"]]
             total_receita_projeto = receitas_projeto["Valor Recebido"].sum()
-            percentual = (total_receita_projeto / meta) * 100
+            percentual = (total_receita_projeto / meta) * 100 if meta > 0 else 0
             status_metas.append({"nome": projeto["Código"], "percentual": percentual})
         if not status_metas:
             st.info("Nenhum projeto com meta.")
@@ -176,3 +165,5 @@ with st.container():
                     st.markdown(f'<div class="metric-box {css_class}"><h4>{status["nome"]}</h4><p>{status["percentual"]:.1f}%</p></div>', unsafe_allow_html=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
+
+# ... (código da sidebar para Ações permanece o mesmo) ...
