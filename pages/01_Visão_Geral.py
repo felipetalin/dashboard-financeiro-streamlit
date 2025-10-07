@@ -1,4 +1,5 @@
-# pages/01_Visão_Geral.py
+# pages/01_Visão_Geral.py (VERSÃO CORRIGIDA E COMPLETA)
+
 import streamlit as st
 import pandas as pd
 import gspread
@@ -48,9 +49,12 @@ def carregar_dados(spreadsheet_id, _gc):
         return projetos, receitas, despesas, custos, parametros_impostos
     except Exception as e: return tuple(pd.DataFrame() for _ in range(5))
 def calcular_totais(receitas, despesas, custos):
-    return (receitas["Valor Recebido"].sum(), despesas["Valor Pago"].sum(), custos["Valor"].sum(),
-            receitas["Valor Recebido"].sum() - despesas["Valor Pago"].sum() - custos["Valor"].sum(),
-            receitas["Valor Recebido"].sum() - despesas["Valor Pago"].sum())
+    total_receitas = receitas["Valor Recebido"].sum()
+    total_despesas = despesas["Valor Pago"].sum()
+    total_custos = custos["Valor"].sum()
+    lucro_total = total_receitas - total_despesas - total_custos
+    fluxo_caixa = total_receitas - total_despesas
+    return total_receitas, total_despesas, total_custos, lucro_total, fluxo_caixa
 
 # --- INICIALIZAÇÃO E CARGA DE DADOS ---
 spreadsheet_id = "1Ut25HiLC17oq7X6ThTKqMPHnPUoBjXsIRaVVFJDa7r4"
@@ -71,7 +75,8 @@ data_inicio = st.sidebar.date_input("Data de Início", hoje.replace(day=1))
 data_fim = st.sidebar.date_input("Data de Fim", hoje)
 
 # --- APLICAÇÃO DOS FILTROS ---
-receitas_f, despesas_f = receitas.copy(), despesas.copy()
+receitas_f = receitas.copy()
+despesas_f = despesas.copy()
 if cliente_selecionado != "Todos":
     codigos_cliente = projetos[projetos["Cliente"] == cliente_selecionado]["Código"].tolist()
     receitas_f = receitas_f[receitas_f["Projeto"].isin(codigos_cliente)]
@@ -83,8 +88,9 @@ if data_inicio and data_fim and data_inicio <= data_fim:
     receitas_f = receitas_f[receitas_f["Data Recebimento"].between(data_inicio, data_fim)]
     despesas_f = despesas_f[despesas_f["Data Pagamento"].between(data_inicio, data_fim)]
 
-# --- LAYOUT PRINCIPAL ---
+# --- LAYOUT PRINCIPAL DA PÁGINA "VISÃO GERAL" ---
 st.title("Dashboard: Visão Geral")
+st.markdown("Visão geral dos indicadores financeiros para o período selecionado.")
 total_receitas, total_despesas, total_custos, lucro_total, fluxo_caixa = calcular_totais(receitas_f, despesas_f, custos)
 kpi_cols = st.columns(5)
 kpi_cols[0].metric("Receita Total", format_currency(total_receitas, "BRL", locale="pt_BR"))
@@ -92,7 +98,98 @@ kpi_cols[1].metric("Despesa Total", format_currency(total_despesas, "BRL", local
 kpi_cols[2].metric("Custos Fixos/Var.", format_currency(total_custos, "BRL", locale="pt_BR"))
 kpi_cols[3].metric("Lucro Total", format_currency(lucro_total, "BRL", locale="pt_BR"))
 kpi_cols[4].metric("Fluxo de Caixa", format_currency(fluxo_caixa, "BRL", locale="pt_BR"))
+st.markdown("---")
+
+# Gráfico de Evolução
+st.header("📈 Evolução Financeira no Período")
+df_tempo_receita = receitas_f.rename(columns={"Data Recebimento": "Data", "Valor Recebido": "Valor"}).assign(Tipo="Receita")
+df_tempo_despesa = despesas_f.rename(columns={"Data Pagamento": "Data", "Valor Pago": "Valor"}).assign(Tipo="Despesa")
+df_tempo = pd.concat([df_tempo_receita, df_tempo_despesa])
+if not df_tempo.empty:
+    fig = px.area(df_tempo, x="Data", y="Valor", color="Tipo", title="Receitas vs. Despesas",
+                  labels={"Valor": "Valor (R$)", "Data": "Data"}, color_discrete_map={"Receita": "#28a745", "Despesa": "#FF4B4B"})
+    st.plotly_chart(fig, use_container_width=True)
+else:
+    st.info("Sem dados no período para exibir o gráfico de evolução.")
 
 st.markdown("---")
 
-# ... Resto do seu layout de gráficos e metas ...
+# Novos gráficos e cards de meta em colunas
+col_vis1, col_vis2 = st.columns(2)
+
+with col_vis1:
+    st.header("💡 Análise de Custos e Despesas")
+    if not despesas_f.empty:
+        top_despesas = despesas_f.groupby("Categoria")["Valor Pago"].sum().nlargest(5).reset_index()
+        fig_bar = px.bar(top_despesas, x="Valor Pago", y="Categoria", orientation='h',
+                         title="Top 5 Despesas por Categoria", labels={"Valor Pago": "Total Gasto (R$)", "Categoria": "Categoria"})
+        fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
+        st.plotly_chart(fig_bar, use_container_width=True)
+    else:
+        st.info("Não há despesas no período para analisar.")
+
+with col_vis2:
+    st.header("🚨 Status das Metas")
+    projetos_com_meta = projetos[projetos['Meta de Receita'] > 0]
+    status_metas = []
+    for _, projeto in projetos_com_meta.iterrows():
+        meta = projeto['Meta de Receita']
+        receitas_projeto = receitas_f[receitas_f["Projeto"] == projeto["Código"]]
+        total_receita_projeto = receitas_projeto["Valor Recebido"].sum()
+        percentual = (total_receita_projeto / meta) * 100
+        status_metas.append({"nome": projeto["Código"], "percentual": percentual})
+
+    if not status_metas:
+        st.info("Nenhum projeto com meta definida.")
+    else:
+        cols = st.columns(len(status_metas))
+        for i, status in enumerate(status_metas):
+            with cols[i]:
+                css_class = "metric-box-green" if status['percentual'] >= 100 else "metric-box-red"
+                st.markdown(f"""
+                <div class="metric-box {css_class}">
+                    <h4>{status['nome']}</h4>
+                    <p>{status['percentual']:.1f}%</p>
+                </div>
+                """, unsafe_allow_html=True)
+
+# Ação na Sidebar
+def escrever_dados(spreadsheet_id, worksheet_name, data, gc):
+    try:
+        sh = gc.open_by_key(spreadsheet_id)
+        worksheet = sh.worksheet(worksheet_name)
+        worksheet.clear()
+        worksheet.update([data.columns.values.tolist()] + data.values.tolist())
+    except Exception as e:
+        st.error(f"Não foi possível escrever na planilha '{worksheet_name}': {e}")
+def calcular_impostos(receitas_df, parametros_impostos_df):
+    if receitas_df.empty or parametros_impostos_df.empty: return pd.DataFrame()
+    impostos_calculados = []
+    for _, receita in receitas_df.iterrows():
+        valor_receita = float(receita["Valor Recebido"])
+        impostos_projeto = {"ID": str(uuid.uuid4()), "Projeto": receita["Projeto"], "Valor da Receita": valor_receita}
+        total_impostos = 0
+        for _, parametro in parametros_impostos_df.iterrows():
+            imposto = parametro["Imposto"]
+            aliquota = float(str(parametro["Alíquota"]).replace(',', '.'))
+            valor_imposto = valor_receita * aliquota
+            impostos_projeto[imposto] = valor_imposto
+            total_impostos += valor_imposto
+        impostos_projeto["Total de Impostos"] = total_impostos
+        impostos_calculados.append(impostos_projeto)
+    return pd.DataFrame(impostos_calculados)
+    
+st.sidebar.header("Ações")
+if st.sidebar.button("Calcular e Salvar Impostos (Período Filtrado)"):
+    if gc:
+        with st.spinner("Calculando e salvando impostos..."):
+            impostos_calculados = calcular_impostos(receitas_f, parametros_impostos)
+            if not impostos_calculados.empty:
+                escrever_dados(spreadsheet_id, "Calculo_Impostos", impostos_calculados, gc)
+                st.sidebar.success("Impostos calculados e salvos!")
+                with st.sidebar.expander("Ver Resultado", expanded=True):
+                    st.dataframe(impostos_calculados)
+            else:
+                st.sidebar.warning("Nenhuma receita no período.")
+    else:
+        st.sidebar.error("Conexão falhou.")
