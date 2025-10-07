@@ -1,4 +1,4 @@
-# pages/01_Visão_Geral.py (VERSÃO CORRIGIDA - Nomes das abas ajustados)
+# pages/01_Visão_Geral.py (VERSÃO FINAL SINCRONIZADA)
 
 import streamlit as st
 import pandas as pd
@@ -31,50 +31,53 @@ def conectar_sheets():
 
 @st.cache_data(ttl=300)
 def carregar_dados(spreadsheet_id, _gc):
-    if _gc is None: return tuple(pd.DataFrame() for _ in range(3))
+    if _gc is None: return tuple(pd.DataFrame() for _ in range(4))
     try:
         sh = _gc.open_by_key(spreadsheet_id)
         projetos = pd.DataFrame(sh.worksheet("Projetos").get_all_records())
-        
-        # ** MUDANÇA IMPORTANTE AQUI **
-        # Verifique se os nomes "Receitas_Reais" e "Despesas_Reais" correspondem à sua planilha
+        # CORREÇÃO: Usando os nomes exatos das abas
         receitas = pd.DataFrame(sh.worksheet("Receitas_Reais").get_all_records())
         despesas = pd.DataFrame(sh.worksheet("Despesas_Reais").get_all_records())
+        custos = pd.DataFrame(sh.worksheet("Custos_Fixos_Variaveis").get_all_records())
         
-        for df, col in zip([receitas, despesas], ["Data Recebimento", "Data Pagamento"]):
+        for df, col in zip([receitas, despesas, custos], ["Data Recebimento", "Data Pagamento", "Data"]):
             if col in df.columns and not df.empty:
                 df[col] = pd.to_datetime(df[col], errors='coerce')
         
-        for col in ["Valor Recebido", "Valor Pago"]:
-            for df in [receitas, despesas]:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        for df, col in zip([receitas, despesas, custos], ["Valor Recebido", "Valor Pago", "Valor"]):
+             if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         
-        return projetos, receitas, despesas
+        return projetos, receitas, despesas, custos
     except gspread.exceptions.WorksheetNotFound as e:
-        st.error(f"Erro ao ler dados: A aba '{e.args[0]}' não foi encontrada na planilha. Verifique o nome da aba.")
-        return tuple(pd.DataFrame() for _ in range(3))
+        st.error(f"Erro: A aba '{e.args[0]}' não foi encontrada. Verifique o nome na planilha.")
+        return tuple(pd.DataFrame() for _ in range(4))
     except Exception as e:
-        st.error(f"Ocorreu um erro inesperado ao ler os dados: {e}")
-        return tuple(pd.DataFrame() for _ in range(3))
+        st.error(f"Ocorreu um erro ao ler os dados: {e}")
+        return tuple(pd.DataFrame() for _ in range(4))
 
-def calcular_metricas_resumo(receitas_f, despesas_f, receitas_total, despesas_total, data_inicio_filtro):
+def calcular_metricas_resumo(receitas_f, despesas_f, custos_f, receitas_total, despesas_total, custos_total, data_inicio_filtro):
     receitas_periodo = receitas_f['Valor Recebido'].sum()
     despesas_periodo = despesas_f['Valor Pago'].sum()
-    resultado_periodo = receitas_periodo - despesas_periodo
+    custos_periodo = custos_f['Valor'].sum()
+    resultado_periodo = receitas_periodo - despesas_periodo - custos_periodo
     data_inicio_dt = pd.to_datetime(data_inicio_filtro)
+    
     receitas_anteriores = receitas_total[receitas_total['Data Recebimento'] < data_inicio_dt]['Valor Recebido'].sum()
     despesas_anteriores = despesas_total[despesas_total['Data Pagamento'] < data_inicio_dt]['Valor Pago'].sum()
-    saldo_anterior = receitas_anteriores - despesas_anteriores
+    custos_anteriores = custos_total[custos_total['Data'] < data_inicio_dt]['Valor'].sum()
+    
+    saldo_anterior = receitas_anteriores - despesas_anteriores - custos_anteriores
     saldo_atual = saldo_anterior + resultado_periodo
-    return saldo_anterior, receitas_periodo, despesas_periodo, resultado_periodo, saldo_atual
+    
+    return saldo_anterior, receitas_periodo, despesas_periodo, custos_periodo, resultado_periodo, saldo_atual
 
 # --- INICIALIZAÇÃO E CARGA DE DADOS ---
-spreadsheet_id = "1Ut2GeralHiLC17oq7X6ThTKqMPHnPUoBjXsIRaVVFJDa7r4"
+spreadsheet_id = "1Ut25HiLC17oq7X6ThTKqMPHnPUoBjXsIRaVVFJDa7r4"
 gc = conectar_sheets()
-projetos, receitas, despesas = carregar_dados(spreadsheet_id, gc)
+projetos, receitas, despesas, custos = carregar_dados(spreadsheet_id, gc)
 if projetos.empty or receitas.empty or despesas.empty:
-    st.warning("Uma ou mais abas de dados essenciais ('Projetos', 'Receitas_Reais', 'Despesas_Reais') não foram carregadas. Verifique os nomes e permissões.")
+    st.warning("Uma ou mais abas de dados essenciais não foram carregadas. Verifique os nomes e permissões.")
     st.stop()
 
 # --- SIDEBAR ---
@@ -88,10 +91,8 @@ data_inicio = st.sidebar.date_input("Data de Início", hoje.replace(day=1))
 data_fim = st.sidebar.date_input("Data de Fim", hoje)
 
 # --- APLICAÇÃO DOS FILTROS ---
-receitas_f = receitas.copy()
-despesas_f = despesas.copy()
-start_date = pd.to_datetime(data_inicio)
-end_date = pd.to_datetime(data_fim)
+receitas_f, despesas_f, custos_f = receitas.copy(), despesas.copy(), custos.copy()
+start_date, end_date = pd.to_datetime(data_inicio), pd.to_datetime(data_fim)
 if cliente_selecionado != "Todos":
     codigos_cliente = projetos[projetos["Cliente"] == cliente_selecionado]["Código"].tolist()
     receitas_f = receitas_f[receitas_f["Projeto"].isin(codigos_cliente)]
@@ -102,17 +103,19 @@ if projeto_selecionado != "Todos":
 if start_date and end_date and start_date <= end_date:
     receitas_f = receitas_f[receitas_f["Data Recebimento"].between(start_date, end_date)]
     despesas_f = despesas_f[despesas_f["Data Pagamento"].between(start_date, end_date)]
+    custos_f = custos_f[custos_f["Data"].between(start_date, end_date)]
 
 # --- LAYOUT DA PÁGINA DE RESUMO ---
 st.title("Resumo do Fluxo de Caixa")
 st.markdown("---")
-saldo_ant, rec_per, desp_per, res_per, saldo_atu = calcular_metricas_resumo(receitas_f, despesas_f, receitas, despesas, data_inicio)
-kpi_cols = st.columns(5)
+saldo_ant, rec_per, desp_per, custo_per, res_per, saldo_atu = calcular_metricas_resumo(receitas_f, despesas_f, custos_f, receitas, despesas, custos, data_inicio)
+kpi_cols = st.columns(6)
 kpi_cols[0].metric("Saldo Anterior", format_currency(saldo_ant, "BRL", locale="pt_BR"))
-kpi_cols[1].metric("Receitas do Período", format_currency(rec_per, "BRL", locale="pt_BR"))
-kpi_cols[2].metric("Despesas do Período", format_currency(desp_per, "BRL", locale="pt_BR"))
-kpi_cols[3].metric("Resultado do Período", format_currency(res_per, "BRL", locale="pt_BR"))
-kpi_cols[4].metric("Saldo Atual", format_currency(saldo_atu, "BRL", locale="pt_BR"))
+kpi_cols[1].metric("Receitas", format_currency(rec_per, "BRL", locale="pt_BR"))
+kpi_cols[2].metric("Despesas", format_currency(desp_per, "BRL", locale="pt_BR"))
+kpi_cols[3].metric("Custos", format_currency(custo_per, "BRL", locale="pt_BR"))
+kpi_cols[4].metric("Resultado", format_currency(res_per, "BRL", locale="pt_BR"))
+kpi_cols[5].metric("Saldo Atual", format_currency(saldo_atu, "BRL", locale="pt_BR"))
 st.markdown("---")
 
 st.subheader("Evolução do Fluxo de Caixa no Período")
