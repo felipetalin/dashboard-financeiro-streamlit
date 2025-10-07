@@ -1,4 +1,4 @@
-# app.py
+# app.py CORRIGIDO
 import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
@@ -7,15 +7,14 @@ import pandas as pd
 st.set_page_config(layout="wide")
 st.title("Teste de Conexão com Google Sheets (Feito no GitHub!)")
 
-# Escopos de permissão
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
 
-# Função de conexão
 @st.cache_resource
 def conectar_sheets():
     try:
         creds = Credentials.from_service_account_info(st.secrets["google_credentials"], scopes=SCOPES)
-        gc = gspread.service_account(credentials=creds)
+        # CORREÇÃO AQUI: Trocamos gspread.service_account por gspread.authorize
+        gc = gspread.authorize(creds)
         return gc
     except Exception as e:
         st.error(f"Falha ao conectar: {e}")
