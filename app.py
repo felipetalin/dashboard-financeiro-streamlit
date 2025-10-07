@@ -10,6 +10,43 @@ import uuid
 # --- Configuração da Página ---
 st.set_page_config(layout="wide", page_title="Dashboard Financeiro")
 
+# --- CSS PARA OS CARDS DE STATUS DE META ---
+# Este bloco de código injeta o estilo para os "mini boxes" que vamos criar.
+st.markdown("""
+<style>
+.metric-box {
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    padding: 15px;
+    margin: 5px 0;
+    text-align: center;
+    color: #333; /* Cor do texto padrão */
+}
+.metric-box-red {
+    border-left: 10px solid #FF4B4B; /* Borda vermelha grossa */
+    background-color: #f9e5e5; /* Fundo vermelho bem claro */
+}
+.metric-box-green {
+    border-left: 10px solid #28a745; /* Borda verde grossa */
+    background-color: #e9f5ec; /* Fundo verde bem claro */
+}
+.metric-box h4 {
+    font-size: 16px;
+    margin-bottom: 5px;
+    color: #555; /* Cor do título do projeto */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis; /* Adiciona '...' se o nome do projeto for muito longo */
+}
+.metric-box p {
+    font-size: 28px;
+    font-weight: bold;
+    margin: 0;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
 # --- Funções de Conexão e Lógica de Negócio ---
 
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
@@ -176,19 +213,50 @@ with col_custos:
         st.plotly_chart(fig_pie, use_container_width=True)
     else:
         st.info("Não há dados de custos para exibir.")
+
+# --- SEÇÃO DE ALERTAS ATUALIZADA ---
+# Este bloco substitui a lista de alertas antiga por cards horizontais.
 with col_alertas:
-    st.header("🚨 Alertas de Meta")
+    st.header("🚨 Status das Metas")
+
     if 'Meta de Receita' not in projetos.columns:
         st.warning("Coluna 'Meta de Receita' não encontrada na planilha 'Projetos'.")
     else:
+        # 1. Filtra projetos que têm uma meta numérica válida
         projetos_com_meta = projetos[pd.to_numeric(projetos['Meta de Receita'], errors='coerce').notna()].copy()
         projetos_com_meta['Meta de Receita'] = pd.to_numeric(projetos_com_meta['Meta de Receita'])
-        alertas_gerados = 0
+
+        # 2. Prepara os dados para cada card
+        status_metas = []
         for _, projeto in projetos_com_meta.iterrows():
-            receitas_projeto = receitas_f[receitas_f["Projeto"] == projeto["Código"]]
-            total_receita_projeto = receitas_projeto["Valor Recebido"].sum()
-            if total_receita_projeto < projeto["Meta de Receita"]:
-                st.warning(f"**{projeto['Código']}**: Receita abaixo da meta. (Atual: {format_currency(total_receita_projeto, 'BRL', locale='pt_BR')} / Meta: {format_currency(projeto['Meta de Receita'], 'BRL', locale='pt_BR')})")
-                alertas_gerados += 1
-        if alertas_gerados == 0:
-            st.success("Todos os projetos com metas estão dentro do esperado!")
+            meta = projeto['Meta de Receita']
+            if meta > 0: # Evita divisão por zero
+                receitas_projeto = receitas_f[receitas_f["Projeto"] == projeto["Código"]]
+                total_receita_projeto = pd.to_numeric(receitas_projeto["Valor Recebido"], errors='coerce').sum()
+                percentual = (total_receita_projeto / meta) * 100
+                
+                status_metas.append({
+                    "nome": projeto["Código"],
+                    "percentual": percentual,
+                    "cor": "green" if percentual >= 100 else "red"
+                })
+
+        # 3. Exibe os cards
+        if not status_metas:
+            st.info("Nenhum projeto com meta definida para o período filtrado.")
+        else:
+            # Cria o número exato de colunas necessárias
+            cols = st.columns(len(status_metas))
+            
+            for i, status in enumerate(status_metas):
+                with cols[i]:
+                    # Define a classe CSS com base na cor
+                    css_class = "metric-box-green" if status['cor'] == 'green' else "metric-box-red"
+                    
+                    # Usa st.markdown para criar o "mini box" com HTML e CSS
+                    st.markdown(f"""
+                    <div class="metric-box {css_class}">
+                        <h4>{status['nome']}</h4>
+                        <p>{status['percentual']:.1f}%</p>
+                    </div>
+                    """, unsafe_allow_html=True)
