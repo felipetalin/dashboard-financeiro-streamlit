@@ -1,4 +1,4 @@
-# pages/01_Visão_Geral.py (VERSÃO CORRIGIDA E COMPLETA)
+# Código ATUALIZADO para: pages/01_Visão_Geral.py
 
 import streamlit as st
 import pandas as pd
@@ -11,18 +11,25 @@ import uuid
 
 # --- Configuração da Página e Estilos ---
 st.set_page_config(layout="wide", page_title="Visão Geral | Dashboard Opyta")
+# MELHORIA DE ESTILO: Adicionamos um estilo para o container de blocos
 st.markdown("""
 <style>
+.block-container {
+    padding: 2rem 2rem;
+    border: 1px solid #e6e6e6;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+    margin-bottom: 2rem;
+}
 .metric-box { border: 1px solid #ddd; border-radius: 10px; padding: 15px; margin: 5px 0; text-align: center; }
 .metric-box-red { border-left: 10px solid #FF4B4B; background-color: #f9e5e5; }
 .metric-box-green { border-left: 10px solid #28a745; background-color: #e9f5ec; }
 .metric-box h4 { font-size: 16px; margin-bottom: 5px; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .metric-box p { font-size: 28px; font-weight: bold; margin: 0; }
-.stExpander { border: 1px solid #ddd; border-radius: 10px; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- Funções Core ---
+# --- Funções Core (sem alterações) ---
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
 @st.cache_resource
 def conectar_sheets():
@@ -48,13 +55,13 @@ def carregar_dados(spreadsheet_id, _gc):
                 if col in df.columns: df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         return projetos, receitas, despesas, custos, parametros_impostos
     except Exception as e: return tuple(pd.DataFrame() for _ in range(5))
-def calcular_totais(receitas, despesas, custos):
-    total_receitas = receitas["Valor Recebido"].sum()
-    total_despesas = despesas["Valor Pago"].sum()
-    total_custos = custos["Valor"].sum()
-    lucro_total = total_receitas - total_despesas - total_custos
-    fluxo_caixa = total_receitas - total_despesas
-    return total_receitas, total_despesas, total_custos, lucro_total, fluxo_caixa
+def calcular_totais(df_receitas, df_despesas, df_custos):
+    receita = df_receitas["Valor Recebido"].sum()
+    despesa = df_despesas["Valor Pago"].sum()
+    custo = df_custos["Valor"].sum()
+    lucro = receita - despesa - custo
+    fluxo = receita - despesa
+    return receita, despesa, custo, lucro, fluxo
 
 # --- INICIALIZAÇÃO E CARGA DE DADOS ---
 spreadsheet_id = "1Ut25HiLC17oq7X6ThTKqMPHnPUoBjXsIRaVVFJDa7r4"
@@ -87,109 +94,85 @@ if projeto_selecionado != "Todos":
 if data_inicio and data_fim and data_inicio <= data_fim:
     receitas_f = receitas_f[receitas_f["Data Recebimento"].between(data_inicio, data_fim)]
     despesas_f = despesas_f[despesas_f["Data Pagamento"].between(data_inicio, data_fim)]
+    # MELHORIA KPI: Calcular dados do período anterior para comparação
+    duracao_periodo = (data_fim - data_inicio).days
+    data_inicio_anterior = data_inicio - datetime.timedelta(days=duracao_periodo + 1)
+    data_fim_anterior = data_fim - datetime.timedelta(days=duracao_periodo + 1)
+    receitas_anterior = receitas_f[receitas_f["Data Recebimento"].between(data_inicio_anterior, data_fim_anterior)]
+    despesas_anterior = despesas_f[despesas_f["Data Pagamento"].between(data_inicio_anterior, data_fim_anterior)]
 
-# --- LAYOUT PRINCIPAL DA PÁGINA "VISÃO GERAL" ---
+# --- LAYOUT PROFISSIONAL DA "VISÃO GERAL" ---
 st.title("Dashboard: Visão Geral")
-st.markdown("Visão geral dos indicadores financeiros para o período selecionado.")
-total_receitas, total_despesas, total_custos, lucro_total, fluxo_caixa = calcular_totais(receitas_f, despesas_f, custos)
-kpi_cols = st.columns(5)
-kpi_cols[0].metric("Receita Total", format_currency(total_receitas, "BRL", locale="pt_BR"))
-kpi_cols[1].metric("Despesa Total", format_currency(total_despesas, "BRL", locale="pt_BR"))
-kpi_cols[2].metric("Custos Fixos/Var.", format_currency(total_custos, "BRL", locale="pt_BR"))
-kpi_cols[3].metric("Lucro Total", format_currency(lucro_total, "BRL", locale="pt_BR"))
-kpi_cols[4].metric("Fluxo de Caixa", format_currency(fluxo_caixa, "BRL", locale="pt_BR"))
-st.markdown("---")
+st.markdown("Análise de performance financeira dos projetos.")
 
-# Gráfico de Evolução
-st.header("📈 Evolução Financeira no Período")
-df_tempo_receita = receitas_f.rename(columns={"Data Recebimento": "Data", "Valor Recebido": "Valor"}).assign(Tipo="Receita")
-df_tempo_despesa = despesas_f.rename(columns={"Data Pagamento": "Data", "Valor Pago": "Valor"}).assign(Tipo="Despesa")
-df_tempo = pd.concat([df_tempo_receita, df_tempo_despesa])
-if not df_tempo.empty:
-    fig = px.area(df_tempo, x="Data", y="Valor", color="Tipo", title="Receitas vs. Despesas",
-                  labels={"Valor": "Valor (R$)", "Data": "Data"}, color_discrete_map={"Receita": "#28a745", "Despesa": "#FF4B4B"})
-    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("Sem dados no período para exibir o gráfico de evolução.")
-
-st.markdown("---")
-
-# Novos gráficos e cards de meta em colunas
-col_vis1, col_vis2 = st.columns(2)
-
-with col_vis1:
-    st.header("💡 Análise de Custos e Despesas")
-    if not despesas_f.empty:
-        top_despesas = despesas_f.groupby("Categoria")["Valor Pago"].sum().nlargest(5).reset_index()
-        fig_bar = px.bar(top_despesas, x="Valor Pago", y="Categoria", orientation='h',
-                         title="Top 5 Despesas por Categoria", labels={"Valor Pago": "Total Gasto (R$)", "Categoria": "Categoria"})
-        fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
-        st.plotly_chart(fig_bar, use_container_width=True)
-    else:
-        st.info("Não há despesas no período para analisar.")
-
-with col_vis2:
-    st.header("🚨 Status das Metas")
-    projetos_com_meta = projetos[projetos['Meta de Receita'] > 0]
-    status_metas = []
-    for _, projeto in projetos_com_meta.iterrows():
-        meta = projeto['Meta de Receita']
-        receitas_projeto = receitas_f[receitas_f["Projeto"] == projeto["Código"]]
-        total_receita_projeto = receitas_projeto["Valor Recebido"].sum()
-        percentual = (total_receita_projeto / meta) * 100
-        status_metas.append({"nome": projeto["Código"], "percentual": percentual})
-
-    if not status_metas:
-        st.info("Nenhum projeto com meta definida.")
-    else:
-        cols = st.columns(len(status_metas))
-        for i, status in enumerate(status_metas):
-            with cols[i]:
-                css_class = "metric-box-green" if status['percentual'] >= 100 else "metric-box-red"
-                st.markdown(f"""
-                <div class="metric-box {css_class}">
-                    <h4>{status['nome']}</h4>
-                    <p>{status['percentual']:.1f}%</p>
-                </div>
-                """, unsafe_allow_html=True)
-
-# Ação na Sidebar
-def escrever_dados(spreadsheet_id, worksheet_name, data, gc):
-    try:
-        sh = gc.open_by_key(spreadsheet_id)
-        worksheet = sh.worksheet(worksheet_name)
-        worksheet.clear()
-        worksheet.update([data.columns.values.tolist()] + data.values.tolist())
-    except Exception as e:
-        st.error(f"Não foi possível escrever na planilha '{worksheet_name}': {e}")
-def calcular_impostos(receitas_df, parametros_impostos_df):
-    if receitas_df.empty or parametros_impostos_df.empty: return pd.DataFrame()
-    impostos_calculados = []
-    for _, receita in receitas_df.iterrows():
-        valor_receita = float(receita["Valor Recebido"])
-        impostos_projeto = {"ID": str(uuid.uuid4()), "Projeto": receita["Projeto"], "Valor da Receita": valor_receita}
-        total_impostos = 0
-        for _, parametro in parametros_impostos_df.iterrows():
-            imposto = parametro["Imposto"]
-            aliquota = float(str(parametro["Alíquota"]).replace(',', '.'))
-            valor_imposto = valor_receita * aliquota
-            impostos_projeto[imposto] = valor_imposto
-            total_impostos += valor_imposto
-        impostos_projeto["Total de Impostos"] = total_impostos
-        impostos_calculados.append(impostos_projeto)
-    return pd.DataFrame(impostos_calculados)
+# MELHORIA KPI: Container para os indicadores principais com cálculo de delta (tendência)
+with st.container():
+    st.markdown('<div class="block-container">', unsafe_allow_html=True)
     
-st.sidebar.header("Ações")
-if st.sidebar.button("Calcular e Salvar Impostos (Período Filtrado)"):
-    if gc:
-        with st.spinner("Calculando e salvando impostos..."):
-            impostos_calculados = calcular_impostos(receitas_f, parametros_impostos)
-            if not impostos_calculados.empty:
-                escrever_dados(spreadsheet_id, "Calculo_Impostos", impostos_calculados, gc)
-                st.sidebar.success("Impostos calculados e salvos!")
-                with st.sidebar.expander("Ver Resultado", expanded=True):
-                    st.dataframe(impostos_calculados)
-            else:
-                st.sidebar.warning("Nenhuma receita no período.")
+    # Calcular totais do período atual e anterior
+    total_receitas, total_despesas, _, _, fluxo_caixa = calcular_totais(receitas_f, despesas_f, custos)
+    total_receitas_ant, total_despesas_ant, _, _, fluxo_caixa_ant = calcular_totais(receitas_anterior, despesas_anterior, custos)
+    
+    # Funções para calcular o delta (a variação percentual)
+    def get_delta(atual, anterior):
+        if anterior == 0: return None # Evita divisão por zero
+        return f"{((atual - anterior) / anterior) * 100:.1f}%"
+
+    kpi_cols = st.columns(3)
+    kpi_cols[0].metric("Receita Total", format_currency(total_receitas, "BRL", locale="pt_BR"), delta=get_delta(total_receitas, total_receitas_ant))
+    kpi_cols[1].metric("Despesa Total", format_currency(total_despesas, "BRL", locale="pt_BR"), delta=get_delta(total_despesas, total_despesas_ant), delta_color="inverse")
+    kpi_cols[2].metric("Fluxo de Caixa", format_currency(fluxo_caixa, "BRL", locale="pt_BR"), delta=get_delta(fluxo_caixa, fluxo_caixa_ant))
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+# MELHORIA DE LAYOUT: Container para o gráfico principal
+with st.container():
+    st.markdown('<div class="block-container">', unsafe_allow_html=True)
+    st.header("📈 Evolução Financeira")
+    df_tempo_receita = receitas_f.rename(columns={"Data Recebimento": "Data", "Valor Recebido": "Valor"}).assign(Tipo="Receita")
+    df_tempo_despesa = despesas_f.rename(columns={"Data Pagamento": "Data", "Valor Pago": "Valor"}).assign(Tipo="Despesa")
+    df_tempo = pd.concat([df_tempo_receita, df_tempo_despesa])
+    if not df_tempo.empty:
+        fig_area = px.area(df_tempo, x="Data", y="Valor", color="Tipo", labels={"Valor": "Valor (R$)"}, color_discrete_map={"Receita": "#28a745", "Despesa": "#FF4B4B"})
+        st.plotly_chart(fig_area, use_container_width=True)
     else:
-        st.sidebar.error("Conexão falhou.")
+        st.info("Sem dados no período para exibir o gráfico de evolução.")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+# MELHORIA DE LAYOUT: Container para a seção de análises e metas
+with st.container():
+    st.markdown('<div class="block-container">', unsafe_allow_html=True)
+    col_vis1, col_vis2 = st.columns(2)
+
+    with col_vis1:
+        st.header("💡 Top 5 Despesas")
+        if not despesas_f.empty:
+            top_despesas = despesas_f.groupby("Categoria")["Valor Pago"].sum().nlargest(5).reset_index()
+            fig_bar = px.bar(top_despesas, x="Valor Pago", y="Categoria", orientation='h', labels={"Valor Pago": "Total Gasto (R$)", "Categoria": ""})
+            fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
+            st.plotly_chart(fig_bar, use_container_width=True)
+        else:
+            st.info("Não há despesas no período.")
+    
+    with col_vis2:
+        st.header("🚨 Status das Metas")
+        projetos_com_meta = projetos[projetos['Meta de Receita'] > 0]
+        status_metas = []
+        for _, projeto in projetos_com_meta.iterrows():
+            meta = projeto['Meta de Receita']
+            receitas_projeto = receitas_f[receitas_f["Projeto"] == projeto["Código"]]
+            total_receita_projeto = receitas_projeto["Valor Recebido"].sum()
+            percentual = (total_receita_projeto / meta) * 100
+            status_metas.append({"nome": projeto["Código"], "percentual": percentual})
+        if not status_metas:
+            st.info("Nenhum projeto com meta.")
+        else:
+            cols = st.columns(len(status_metas))
+            for i, status in enumerate(status_metas):
+                with cols[i]:
+                    css_class = "metric-box-green" if status['percentual'] >= 100 else "metric-box-red"
+                    st.markdown(f'<div class="metric-box {css_class}"><h4>{status["nome"]}</h4><p>{status["percentual"]:.1f}%</p></div>', unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
