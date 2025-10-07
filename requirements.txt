@@ -1,4 +1,7 @@
+# Conteúdo ATUALIZADO do requirements.txt
 streamlit
 gspread
 google-auth-oauthlib
 pandas
+plotly
+Babel
