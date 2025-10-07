@@ -8,6 +8,7 @@ import datetime
 from babel.numbers import format_currency
 import uuid
 
+# --- Configuração da Página e Estilos ---
 st.set_page_config(layout="wide", page_title="Visão Geral | Dashboard Opyta")
 st.markdown("""
 <style>
@@ -16,9 +17,11 @@ st.markdown("""
 .metric-box-green { border-left: 10px solid #28a745; background-color: #e9f5ec; }
 .metric-box h4 { font-size: 16px; margin-bottom: 5px; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .metric-box p { font-size: 28px; font-weight: bold; margin: 0; }
+.stExpander { border: 1px solid #ddd; border-radius: 10px; }
 </style>
 """, unsafe_allow_html=True)
 
+# --- Funções Core ---
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
 @st.cache_resource
 def conectar_sheets():
@@ -45,13 +48,11 @@ def carregar_dados(spreadsheet_id, _gc):
         return projetos, receitas, despesas, custos, parametros_impostos
     except Exception as e: return tuple(pd.DataFrame() for _ in range(5))
 def calcular_totais(receitas, despesas, custos):
-    total_receitas = receitas["Valor Recebido"].sum()
-    total_despesas = despesas["Valor Pago"].sum()
-    total_custos = custos["Valor"].sum()
-    lucro_total = total_receitas - total_despesas - total_custos
-    fluxo_caixa = total_receitas - total_despesas
-    return total_receitas, total_despesas, total_custos, lucro_total, fluxo_caixa
+    return (receitas["Valor Recebido"].sum(), despesas["Valor Pago"].sum(), custos["Valor"].sum(),
+            receitas["Valor Recebido"].sum() - despesas["Valor Pago"].sum() - custos["Valor"].sum(),
+            receitas["Valor Recebido"].sum() - despesas["Valor Pago"].sum())
 
+# --- INICIALIZAÇÃO E CARGA DE DADOS ---
 spreadsheet_id = "1Ut25HiLC17oq7X6ThTKqMPHnPUoBjXsIRaVVFJDa7r4"
 gc = conectar_sheets()
 projetos, receitas, despesas, custos, parametros_impostos = carregar_dados(spreadsheet_id, gc)
@@ -59,6 +60,7 @@ if projetos.empty:
     st.error("Falha ao carregar dados. A página não pode ser exibida.")
     st.stop()
 
+# --- SIDEBAR ---
 st.sidebar.title("Configurações")
 st.sidebar.header("Filtros")
 cliente_selecionado = st.sidebar.selectbox("Cliente", ["Todos"] + projetos["Cliente"].unique().tolist())
@@ -68,6 +70,7 @@ hoje = datetime.date.today()
 data_inicio = st.sidebar.date_input("Data de Início", hoje.replace(day=1))
 data_fim = st.sidebar.date_input("Data de Fim", hoje)
 
+# --- APLICAÇÃO DOS FILTROS ---
 receitas_f, despesas_f = receitas.copy(), despesas.copy()
 if cliente_selecionado != "Todos":
     codigos_cliente = projetos[projetos["Cliente"] == cliente_selecionado]["Código"].tolist()
@@ -80,7 +83,8 @@ if data_inicio and data_fim and data_inicio <= data_fim:
     receitas_f = receitas_f[receitas_f["Data Recebimento"].between(data_inicio, data_fim)]
     despesas_f = despesas_f[despesas_f["Data Pagamento"].between(data_inicio, data_fim)]
 
-st.title("Visão Geral do Desempenho")
+# --- LAYOUT PRINCIPAL ---
+st.title("Dashboard: Visão Geral")
 total_receitas, total_despesas, total_custos, lucro_total, fluxo_caixa = calcular_totais(receitas_f, despesas_f, custos)
 kpi_cols = st.columns(5)
 kpi_cols[0].metric("Receita Total", format_currency(total_receitas, "BRL", locale="pt_BR"))
@@ -88,6 +92,7 @@ kpi_cols[1].metric("Despesa Total", format_currency(total_despesas, "BRL", local
 kpi_cols[2].metric("Custos Fixos/Var.", format_currency(total_custos, "BRL", locale="pt_BR"))
 kpi_cols[3].metric("Lucro Total", format_currency(lucro_total, "BRL", locale="pt_BR"))
 kpi_cols[4].metric("Fluxo de Caixa", format_currency(fluxo_caixa, "BRL", locale="pt_BR"))
+
 st.markdown("---")
 
-# ... Restante do layout da Visão Geral (gráficos, metas, etc.) ...
+# ... Resto do seu layout de gráficos e metas ...
