@@ -98,22 +98,17 @@ if data_inicio and data_fim and data_inicio <= data_fim:
 st.title("Dashboard: Visão Geral")
 st.markdown("Análise de performance financeira dos projetos.")
 
-# KPI Container com 5 colunas, sem delta
+# KPI Container com 5 colunas
 with st.container():
     st.markdown('<div class="block-container">', unsafe_allow_html=True)
-    
-    # ** MUDANÇA AQUI: Voltamos para o cálculo simples dos 5 KPIs **
     total_receitas, total_despesas, total_custos, lucro_total, fluxo_caixa = calcular_totais(receitas_f, despesas_f, custos)
-    
     kpi_cols = st.columns(5)
     kpi_cols[0].metric("Receita Total", format_currency(total_receitas, "BRL", locale="pt_BR"))
     kpi_cols[1].metric("Despesa Total", format_currency(total_despesas, "BRL", locale="pt_BR"))
     kpi_cols[2].metric("Custos Fixos/Var.", format_currency(total_custos, "BRL", locale="pt_BR"))
     kpi_cols[3].metric("Lucro Total", format_currency(lucro_total, "BRL", locale="pt_BR"))
     kpi_cols[4].metric("Fluxo de Caixa", format_currency(fluxo_caixa, "BRL", locale="pt_BR"))
-    
     st.markdown('</div>', unsafe_allow_html=True)
-
 
 # Container para o gráfico principal
 with st.container():
@@ -129,41 +124,39 @@ with st.container():
         st.info("Sem dados no período para exibir o gráfico de evolução.")
     st.markdown('</div>', unsafe_allow_html=True)
 
+# ** MUDANÇA AQUI: Separamos os containers para ficarem em linhas diferentes **
 
-# Container para a seção de análises e metas
+# Container para a seção Top 5 Despesas
 with st.container():
     st.markdown('<div class="block-container">', unsafe_allow_html=True)
-    col_vis1, col_vis2 = st.columns(2)
-
-    with col_vis1:
-        st.header("💡 Top 5 Despesas")
-        if not despesas_f.empty:
-            top_despesas = despesas_f.groupby("Categoria")["Valor Pago"].sum().nlargest(5).reset_index()
-            fig_bar = px.bar(top_despesas, x="Valor Pago", y="Categoria", orientation='h', labels={"Valor Pago": "Total Gasto (R$)", "Categoria": ""})
-            fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
-            st.plotly_chart(fig_bar, use_container_width=True)
-        else:
-            st.info("Não há despesas no período.")
-    
-    with col_vis2:
-        st.header("🚨 Status das Metas")
-        projetos_com_meta = projetos[projetos['Meta de Receita'] > 0]
-        status_metas = []
-        for _, projeto in projetos_com_meta.iterrows():
-            meta = projeto['Meta de Receita']
-            receitas_projeto = receitas_f[receitas_f["Projeto"] == projeto["Código"]]
-            total_receita_projeto = receitas_projeto["Valor Recebido"].sum()
-            percentual = (total_receita_projeto / meta) * 100 if meta > 0 else 0
-            status_metas.append({"nome": projeto["Código"], "percentual": percentual})
-        if not status_metas:
-            st.info("Nenhum projeto com meta.")
-        else:
-            cols = st.columns(len(status_metas))
-            for i, status in enumerate(status_metas):
-                with cols[i]:
-                    css_class = "metric-box-green" if status['percentual'] >= 100 else "metric-box-red"
-                    st.markdown(f'<div class="metric-box {css_class}"><h4>{status["nome"]}</h4><p>{status["percentual"]:.1f}%</p></div>', unsafe_allow_html=True)
-
+    st.header("💡 Top 5 Despesas")
+    if not despesas_f.empty:
+        top_despesas = despesas_f.groupby("Categoria")["Valor Pago"].sum().nlargest(5).reset_index()
+        fig_bar = px.bar(top_despesas, x="Valor Pago", y="Categoria", orientation='h', labels={"Valor Pago": "Total Gasto (R$)", "Categoria": ""})
+        fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
+        st.plotly_chart(fig_bar, use_container_width=True)
+    else:
+        st.info("Não há despesas no período.")
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ... (código da sidebar para Ações permanece o mesmo) ...
+# Container para a seção Status das Metas
+with st.container():
+    st.markdown('<div class="block-container">', unsafe_allow_html=True)
+    st.header("🚨 Status das Metas")
+    projetos_com_meta = projetos[projetos['Meta de Receita'] > 0]
+    status_metas = []
+    for _, projeto in projetos_com_meta.iterrows():
+        meta = projeto['Meta de Receita']
+        receitas_projeto = receitas_f[receitas_f["Projeto"] == projeto["Código"]]
+        total_receita_projeto = receitas_projeto["Valor Recebido"].sum()
+        percentual = (total_receita_projeto / meta) * 100 if meta > 0 else 0
+        status_metas.append({"nome": projeto["Código"], "percentual": percentual})
+    if not status_metas:
+        st.info("Nenhum projeto com meta.")
+    else:
+        cols = st.columns(len(status_metas))
+        for i, status in enumerate(status_metas):
+            with cols[i]:
+                css_class = "metric-box-green" if status['percentual'] >= 100 else "metric-box-red"
+                st.markdown(f'<div class="metric-box {css_class}"><h4>{status["nome"]}</h4><p>{status["percentual"]:.1f}%</p></div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
