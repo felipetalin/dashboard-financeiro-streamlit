@@ -1,4 +1,4 @@
-pages/01_Visão_Geral.py
+# pages/01_Visão_Geral.py
 import streamlit as st
 import pandas as pd
 import gspread
